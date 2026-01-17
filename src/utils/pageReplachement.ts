@@ -1,97 +1,97 @@
 // src/utils/pageReplacement.ts
 
-export type AlgorithmType = 'FIFO' | 'LRU';
+export type AlgorithmType = 'FIFO' | 'LRU'
 
 export interface SimulationStep {
-  step: number;
-  currentRef: number;
-  frames: (number | undefined)[];
-  status: 'HIT' | 'MISS';
-  replaced: number | null;
+  step: number
+  currentRef: number
+  frames: (number | undefined)[]
+  status: 'HIT' | 'MISS'
+  replaced: number | null
 }
 
 export interface SimulationResult {
-  steps: SimulationStep[];
-  pageFaults: number;
-  hits: number;
-  faultRate: number;
-  total: number;
+  steps: SimulationStep[]
+  pageFaults: number
+  hits: number
+  faultRate: number
+  total: number
 }
 
 export const runSimulation = (
-  algorithm: AlgorithmType, 
-  framesCount: number, 
+  algorithm: AlgorithmType,
+  framesCount: number,
   referenceString: string
 ): SimulationResult => {
   const references = referenceString
     .split(',')
     .map((s) => parseInt(s.trim()))
-    .filter((n) => !isNaN(n));
+    .filter((n) => !isNaN(n))
 
-  const frames: (number | undefined)[] = [];
-  const steps: SimulationStep[] = [];
-  let pageFaults = 0;
-  let hits = 0;
+  const frames: (number | undefined)[] = []
+  const steps: SimulationStep[] = []
+  let pageFaults = 0
+  let hits = 0
 
   // Auxiliar para LRU (guarda el orden de uso)
-  let lruTracker: number[] = [];
+  let lruTracker: number[] = []
 
   references.forEach((pageNum, index) => {
-    let isHit = false;
-    let replacedPage: number | null = null;
+    let isHit = false
+    let replacedPage: number | null = null
 
     if (algorithm === 'FIFO') {
       if (frames.includes(pageNum)) {
-        isHit = true;
+        isHit = true
       } else {
         if (frames.length < framesCount) {
-          frames.push(pageNum);
+          frames.push(pageNum)
         } else {
-          replacedPage = frames.shift() as number;
-          frames.push(pageNum);
+          replacedPage = frames.shift() as number
+          frames.push(pageNum)
         }
-        pageFaults++;
+        pageFaults++
       }
     } else {
       // Lógica LRU
-      const existingIndex = frames.indexOf(pageNum);
+      const existingIndex = frames.indexOf(pageNum)
       if (existingIndex !== -1) {
-        isHit = true;
+        isHit = true
         // Actualizar prioridad en LRU tracker
-        lruTracker = lruTracker.filter(p => p !== pageNum);
-        lruTracker.push(pageNum);
+        lruTracker = lruTracker.filter((p) => p !== pageNum)
+        lruTracker.push(pageNum)
       } else {
         if (frames.length < framesCount) {
-          frames.push(pageNum);
-          lruTracker.push(pageNum);
+          frames.push(pageNum)
+          lruTracker.push(pageNum)
         } else {
-          const lruPage = lruTracker.shift() as number;
-          replacedPage = lruPage;
-          const frameIndex = frames.indexOf(lruPage);
-          frames[frameIndex] = pageNum;
-          lruTracker.push(pageNum);
+          const lruPage = lruTracker.shift() as number
+          replacedPage = lruPage
+          const frameIndex = frames.indexOf(lruPage)
+          frames[frameIndex] = pageNum
+          lruTracker.push(pageNum)
         }
-        pageFaults++;
+        pageFaults++
       }
     }
 
-    if (isHit) hits++;
+    if (isHit) hits++
 
     steps.push({
       step: index + 1,
       currentRef: pageNum,
       frames: [...frames],
       status: isHit ? 'HIT' : 'MISS',
-      replaced: replacedPage
-    });
-  });
+      replaced: replacedPage,
+    })
+  })
 
-  const total = references.length;
+  const total = references.length
   return {
     steps,
     pageFaults,
     hits,
     faultRate: total === 0 ? 0 : (pageFaults / total) * 100,
-    total
-  };
-};
+    total,
+  }
+}
