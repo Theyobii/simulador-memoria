@@ -1,0 +1,78 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'window/**'
+  pull_request:
+    paths:
+      - 'window/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clippy_and_fmt:
+    name: clippy + fmt
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rust-version: stable
+
+      - name: Install system dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            build-essential \
+            pkg-config
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+          run_install: false
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        shell: bash
+        run: pnpm build
+
+      - name: Move the dist to window
+        shell: bash
+        run: mv dist window/
+
+      - name: Run fmt and clippy in parallel
+        working-directory: ./window
+        shell: bash
+        run: |
+          cargo fmt --check & pid_fmt=$!
+          cargo clippy --no-deps -- -D warnings & pid_clippy=$!
+
+          wait $pid_fmt; status_fmt=$?
+          wait $pid_clippy; status_clippy=$?
+
+          echo "fmt exit: $status_fmt, clippy exit: $status_clippy"
+          if [ $status_fmt -ne 0 ] || [ $status_clippy -ne 0 ]; then
+            exit 1
+          fi
