@@ -1,0 +1,138 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+            platform: windows
+          - os: windows-latest
+            arch: x86
+            platform: windows
+          - os: ubuntu-latest
+            arch: x64
+            platform: linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+          run_install: false
+
+      - name: Install JS dependencies
+        run: pnpm install
+
+      - name: Setup Rust (toolchain from rust-toolchain file)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure Rust target/toolchain (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Write-Host "Matrix arch: ${{ matrix.arch }}"
+          if ('${{ matrix.arch }}' -eq 'x86') {
+            # install a 32-bit MSVC toolchain and add the target
+            rustup toolchain install stable-i686-pc-windows-msvc
+            rustup target add i686-pc-windows-msvc --toolchain stable-i686-pc-windows-msvc
+            echo "RUSTUP_TOOLCHAIN=stable-i686-pc-windows-msvc" >> $env:GITHUB_ENV
+            echo "RUST_TARGET=i686-pc-windows-msvc" >> $env:GITHUB_ENV
+          } else {
+            # x64
+            rustup target add x86_64-pc-windows-msvc
+            echo "RUST_TARGET=x86_64-pc-windows-msvc" >> $env:GITHUB_ENV
+          }
+
+      - name: Configure Rust target (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          # typical native linux target (adjust if you need a different triple)
+          rustup target add x86_64-unknown-linux-gnu
+          echo "RUST_TARGET=x86_64-unknown-linux-gnu" >> $GITHUB_ENV
+
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            build-essential \
+            pkg-config
+
+      - name: Package app
+        env:
+          RUST_TARGET: ${{ env.RUST_TARGET }}
+          RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
+        run: |
+          pnpm package:release
+
+      - name: Prepare artifact (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        id: prepare-linux
+        run: |
+          DIST="dist"
+          PACKAGE_DIR="package"
+          mkdir -p "$DIST"
+          ZIP_NAME="Simulador-de-Memoria-${{ matrix.platform }}-${{ matrix.arch }}.zip"
+          zip -r "$DIST/$ZIP_NAME" "$PACKAGE_DIR"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_OUTPUT
+
+      - name: Prepare artifact (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        id: prepare-windows
+        run: |
+          $DIST = "dist"
+          $PACKAGE_DIR = "package"
+          New-Item -ItemType Directory -Force -Path $DIST | Out-Null
+          $ZIP_NAME = "Simulador-de-Memoria-${{ matrix.platform }}-${{ matrix.arch }}.zip"
+          Compress-Archive -Path (Join-Path $PACKAGE_DIR '*') -DestinationPath (Join-Path $DIST $ZIP_NAME) -Force
+          echo "ZIP_NAME=$ZIP_NAME" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: matrix.platform == 'linux' && matrix.arch == 'x64'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release create "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --generate-notes || true
+
+      - name: Upload asset to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" == "windows" ]; then
+            ZIP_NAME="${{ steps.prepare-windows.outputs.ZIP_NAME }}"
+          else
+            ZIP_NAME="${{ steps.prepare-linux.outputs.ZIP_NAME }}"
+          fi
+          gh release upload "${{ github.ref_name }}" "dist/$ZIP_NAME" --clobber

@@ -1,4 +1,4 @@
-// Program that builds the project, copies artifacts, locates the compiled binary and WebView2 DLL, and packages them into a distribution folder
+// Program packages the built web app and Rust binary into a distributable directory.
 
 import { execSync } from 'child_process'
 import * as fs from 'fs'
@@ -12,19 +12,21 @@ const WINDOW_DIR = path.join(ROOT, 'window')
 const DIST_DIR = path.join(ROOT, 'dist')
 const PACKAGE_DIR = path.join(ROOT, 'package')
 const DESIRED_BASE = 'Simulador de Memoria'
+const BINARY_NAME = 'window'
 
+// Helper: logs messages to console.
 function log(...s: any[]) {
   console.log(...s)
 }
 
-// Execute a shell command and log it
+// Executes a shell command while logging it.
 function run(cmd: string, cwd = ROOT) {
   log(`> ${cmd}  (cwd=${cwd})`)
   execSync(cmd, { stdio: 'inherit', cwd })
 }
 
 /* ---------- Robust remove + backup ---------- */
-// Safely check if a path exists, handling possible errors
+// Checks if a filesystem path exists, safely handling errors.
 function exists(p: string) {
   try {
     return fs.existsSync(p)
@@ -33,227 +35,111 @@ function exists(p: string) {
   }
 }
 
-// Attempt native removal using fs.rmSync
-function tryRmSync(p: string) {
-  try {
-    fs.rmSync(p, { recursive: true, force: true })
-    return true
-  } catch (e) {
-    return false
-  }
-}
-
-// Attempt removal on Windows using cmd or PowerShell
-function tryCmdRmWindows(p: string) {
-  try {
-    // use rd (remove directory) — only works when p is directory
-    execSync(`cmd /c rd /s /q "${p}"`, { stdio: 'ignore' })
-    return true
-  } catch {
-    try {
-      // powershell fallback, more forceful
-      execSync(
-        `powershell -NoProfile -Command "Remove-Item -LiteralPath '${p}' -Recurse -Force -ErrorAction SilentlyContinue"`,
-        { stdio: 'ignore' }
-      )
-      return true
-    } catch {
-      return false
-    }
-  }
-}
-
-// Attempt removal on Unix-like systems using rm -rf
-function tryRmUnix(p: string) {
-  try {
-    execSync(`rm -rf "${p}"`, { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
-}
-
-// Safely remove a path with multiple fallback strategies
+// Removes a path, falling back to rename if deletion fails.
 function safeRemove(p: string) {
   if (!exists(p)) return
-
-  // 1) try native fs.rmSync
-  if (tryRmSync(p)) {
-    log(`→ Removed (fs.rmSync) ${p}`)
-    return
-  }
-
-  // 2) platform-specific attempts
-  if (process.platform === 'win32') {
-    if (tryCmdRmWindows(p)) {
-      log(`→ Removed (cmd/PowerShell) ${p}`)
-      return
-    }
-  } else {
-    if (tryRmUnix(p)) {
-      log(`→ Removed (rm -rf) ${p}`)
-      return
-    }
-  }
-
-  // 3) last resort: try to rename the item (if locked, rename may also fail)
-  const bak = `${p}.bak.${Date.now()}`
   try {
-    fs.renameSync(p, bak)
-    log(`→ Renamed locked item to: ${bak}`)
-    return
+    fs.rmSync(p, { recursive: true, force: true })
+    log(`→ Removed ${p}`)
   } catch (err) {
-    // give actionable error with common causes
-    throw new Error(
-      `No se pudo eliminar ni renombrar '${p}'. Razones comunes:\n` +
-        ` - Existe un archivo (no carpeta) llamado 'package'\n` +
-        ` - Un proceso (Explorer, antivirus, tu app) tiene archivos abiertos dentro\n` +
-        ` - Permisos insuficientes (prueba ejecutar en PowerShell como administrador)\n\n` +
-        `Intentos automáticos realizados: fs.rmSync, cmd rd, PowerShell Remove-Item, rm -rf, rename. Error original: ${(err as Error).message}`
-    )
+    const bak = `${p}.bak.${Date.now()}`
+    try {
+      fs.renameSync(p, bak)
+      log(`→ Renamed locked item to: ${bak}`)
+    } catch {
+      throw new Error(`No se pudo eliminar ni renombrar '${p}'`)
+    }
   }
 }
 
 /* ---------- FS helpers ---------- */
-// Ensure a directory exists, creating it recursively if needed
+// Ensures a directory exists, creating it recursively if needed.
 function mkdirp(p: string) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true })
 }
-// Copy a file, creating parent directories as needed
+
+// Copies a file, creating destination directories as required.
 function copyFile(src: string, dest: string) {
   mkdirp(path.dirname(dest))
   fs.copyFileSync(src, dest)
 }
-// Recursively copy files and directories
-function copyRecursive(src: string, dest: string) {
-  const st = fs.statSync(src)
-  if (st.isDirectory()) {
-    mkdirp(dest)
-    for (const ent of fs.readdirSync(src)) {
-      copyRecursive(path.join(src, ent), path.join(dest, ent))
-    }
-  } else {
-    copyFile(src, dest)
-  }
-}
-// Recursively find files that satisfy a predicate
-function findFiles(dir: string, predicate: (p: string) => boolean): string[] {
-  const out: string[] = []
-  if (!fs.existsSync(dir)) return out
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) out.push(...findFiles(full, predicate))
-    else if (entry.isFile() && predicate(full)) out.push(full)
-  }
-  return out
-}
 
 /* ---------- Main flow ---------- */
+// Main execution block: builds assets, compiles binary, and assembles package.
 try {
-  // Build the project using pnpm
+  // Build the JavaScript/TypeScript project.
   run('pnpm build', ROOT)
 
-  // Copy dist -> window/dist
+  // Copy built web assets into window/dist.
   const windowDist = path.join(WINDOW_DIR, 'dist')
   if (exists(windowDist)) safeRemove(windowDist)
-  copyRecursive(DIST_DIR, windowDist)
+  fs.cpSync(DIST_DIR, windowDist, { recursive: true })
   log('→ Copiado dist -> window/dist')
 
-  // Build the Rust binary with Cargo
+  // Compile the Rust binary with Cargo.
   run(IS_RELEASE ? 'cargo build --release' : 'cargo build', WINDOW_DIR)
 
-  // Locate the compiled .exe binary
+  // Determine the path to the compiled binary.
   const profile = IS_RELEASE ? 'release' : 'debug'
   const profileDir = path.join(WINDOW_DIR, 'target', profile)
-  let exeCandidates = findFiles(profileDir, (p) => p.toLowerCase().endsWith('.exe'))
-  if (exeCandidates.length === 0)
-    exeCandidates = findFiles(path.join(WINDOW_DIR, 'target'), (p) =>
-      p.toLowerCase().endsWith('.exe')
-    )
+  const binaryExt = process.platform === 'win32' ? '.exe' : ''
+  const binaryPath = path.join(profileDir, `${BINARY_NAME}${binaryExt}`)
 
-  // Try to read Cargo.toml to get the crate name
-  let preferredName: string | null = null
-  try {
-    const toml = fs.readFileSync(path.join(WINDOW_DIR, 'Cargo.toml'), 'utf8')
-    const m = toml.match(/^\s*name\s*=\s*["'](.+?)["']/m)
-    if (m) preferredName = m[1]
-  } catch {}
-
-  // Choose the most appropriate binary
-  let binPath: string | null = null
-  if (preferredName) {
-    const match = exeCandidates.find((p) =>
-      path.basename(p).toLowerCase().startsWith(preferredName!.toLowerCase())
-    )
-    if (match) binPath = match
-  }
-  if (!binPath && exeCandidates.length > 0) {
-    exeCandidates.sort((a, b) => fs.statSync(b).size - fs.statSync(a).size)
-    binPath = exeCandidates[0]
-  }
-  if (!binPath)
-    throw new Error("No se encontró binario (.exe) en target. Revisa la salida de 'cargo build'.")
-
-  log('→ Binario encontrado:', binPath)
-
-  // Locate WebView2Loader.dll for the current architecture
-  const archMap: Record<string, string> = { x64: 'x64', ia32: 'x86', arm64: 'arm64' }
-  const nodeArch = process.arch in archMap ? archMap[process.arch] : process.arch
-  const targetRoot = path.join(WINDOW_DIR, 'target')
-
-  let dllCandidates = findFiles(
-    targetRoot,
-    (p) =>
-      path.basename(p).toLowerCase() === 'webview2loader.dll' &&
-      p.toLowerCase().includes(`${path.sep}out${path.sep}${nodeArch}`)
-  )
-  if (dllCandidates.length === 0) {
-    dllCandidates = findFiles(
-      targetRoot,
-      (p) => path.basename(p).toLowerCase() === 'webview2loader.dll'
-    )
-  }
-  if (dllCandidates.length === 0) {
-    log(
-      '⚠ WebView2Loader.dll NO encontrado en target. Si esperas ejecutarlo en Windows, revisa la compilación.'
-    )
-  } else {
-    log('→ WebView2Loader.dll encontrado:', dllCandidates[0])
+  if (!exists(binaryPath)) {
+    throw new Error(`No se encontró el binario en: ${binaryPath}`)
   }
 
-  // Prepare the package directory (binary renamed + DLL)
+  log('→ Binario encontrado:', binaryPath)
+
+  // Locate WebView2Loader.dll on Windows platforms.
+  let dllPath: string | null = null
+  if (process.platform === 'win32') {
+    const targetRoot = path.join(WINDOW_DIR, 'target')
+    const dllFiles = fs
+      .readdirSync(targetRoot, { recursive: true })
+      .filter(
+        (f: any) => typeof f === 'string' && path.basename(f).toLowerCase() === 'webview2loader.dll'
+      )
+
+    if (dllFiles.length > 0) {
+      dllPath = path.join(targetRoot, dllFiles[0] as string)
+      log('→ WebView2Loader.dll encontrado:', dllPath)
+    } else {
+      log('⚠ WebView2Loader.dll NO encontrado')
+    }
+  }
+
+  // Prepare the output package directory.
   if (exists(PACKAGE_DIR)) safeRemove(PACKAGE_DIR)
   mkdirp(PACKAGE_DIR)
 
-  // Copy and rename the binary
-  const origExt = path.extname(binPath) || (process.platform === 'win32' ? '.exe' : '')
-  const outBinName = `${DESIRED_BASE}${origExt}`
+  // Copy and rename the compiled binary to the package.
+  const outBinName = `${DESIRED_BASE}${binaryExt}`
   const outBinPath = path.join(PACKAGE_DIR, outBinName)
-  copyFile(binPath, outBinPath)
-  log(`→ Copiado y renombrado binario a: ${outBinPath}`)
+  copyFile(binaryPath, outBinPath)
+  log(`→ Copiado binario a: ${outBinPath}`)
 
-  // Ensure executable permission on non‑Windows platforms
+  // Set executable permissions on Unix-like systems.
   if (process.platform !== 'win32') {
-    try {
-      fs.chmodSync(outBinPath, 0o755)
-    } catch {}
+    fs.chmodSync(outBinPath, 0o755)
   }
 
-  // Copy the DLL if it was found
-  if (dllCandidates.length > 0) {
+  // Copy WebView2Loader.dll into the package on Windows.
+  if (dllPath) {
     const dllDest = path.join(PACKAGE_DIR, 'WebView2Loader.dll')
-    copyFile(dllCandidates[0], dllDest)
+    copyFile(dllPath, dllDest)
     log(`→ Copiado DLL a: ${dllDest}`)
   }
 
-  // Log final package contents
+  // List final package contents.
   log('✔ Empaquetado completado. Contenido de package/:')
   for (const f of fs.readdirSync(PACKAGE_DIR)) {
     const p = path.join(PACKAGE_DIR, f)
-    log('   -', f, `(${(fs.statSync(p).size / 1024).toFixed(1)} KB)`)
+    const size = fs.statSync(p).size / 1024
+    log('   -', f, `(${size.toFixed(1)} KB)`)
   }
 } catch (err: any) {
-  // Report any error that occurred during packaging
+  // Handle errors and exit with failure status.
   console.error('✖ Error durante empaquetado:', err?.message ?? err)
   process.exit(1)
 }
