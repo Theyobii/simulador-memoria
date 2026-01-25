@@ -12,7 +12,9 @@
     "format": "prettier --write ./src",
     "format:all": "prettier --write .",
     "format:check": "prettier --check .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "package": "node scripts/build.ts",
+    "package:release": "node scripts/build.ts --release"
   },
   "dependencies": {
     "chart.js": "^4.5.1",

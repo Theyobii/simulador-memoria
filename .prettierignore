@@ -4,3 +4,5 @@ build
 .coverage
 .eslintcache
 pnpm-lock.yaml
+window
+package
