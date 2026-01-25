@@ -11,7 +11,10 @@ A translation simulator of logical to physical addresses under a paging and virt
 ## Table of Contents
 
 - [Technologies](#technologies)
-- [Build Steps](#build)
+- [Build](#build)
+  - [Prerequisites for Building and Running](#prerequisites-for-building-and-running)
+  - [Development Requirements](#development-requirements)
+  - [Steps](#steps)
 - [Code Quality](#code-quality)
 - [Downloads](#downloads)
 - [License](#license)
@@ -31,7 +34,25 @@ This project uses various technologies from the Rust and NodeJS ecosystem, but i
 
 ## Build
 
-### Requirements
+### Prerequisites for Building and Running
+
+- **Linux**: Install the following system dependencies via `apt`:
+
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y \
+      libglib2.0-dev \
+      libgtk-3-dev \
+      libwebkit2gtk-4.1-dev \
+      libappindicator3-dev \
+      librsvg2-dev \
+      build-essential \
+      pkg-config
+  ```
+
+- **Windows**: Ensure the **WebView2** runtime is installed. You can download it from [Microsoft's official page](https://developer.microsoft.com/microsoft-edge/webview2).
+
+### Development Requirements
 
 - **Rust** 1.90.0 or higher.
 - **NodeJS** 22.21.1 or higher.
@@ -46,7 +67,7 @@ This project uses various technologies from the Rust and NodeJS ecosystem, but i
    cd simulador-memoria
    ```
 
-2. **Compile the binary.:**
+2. **Compile the binary:**
 
    ```bash
    pnpm package:release
@@ -62,7 +83,7 @@ This project includes comprehensive code quality tools:
 
 - **[Clippy](https://github.com/rust-lang/rust-clippy)** - "A collection of lints to catch common mistakes and improve your Rust code".
 - **[rustfmt](https://github.com/rust-lang/rustfmt)** - "A tool for formatting Rust code according to style guidelines".
-- **[TypeScript](https:https://github.com/microsoft/TypeScript)** - "TypeScript is a superset of JavaScript that compiles to clean JavaScript output".
+- **[TypeScript](https://github.com/microsoft/TypeScript)** - "TypeScript is a superset of JavaScript that compiles to clean JavaScript output".
 - **[ESLint](https://github.com/eslint/eslint)** - "Find and fix problems in your JavaScript code.".
 - **[Prettier](https://github.com/prettier/prettier)** - "Prettier is an opinionated code formatter".
 
@@ -71,6 +92,8 @@ This project includes comprehensive code quality tools:
 ## Downloads
 
 You can get the latest release from this repository's [releases page](https://github.com/Theyobii/simulador-memoria/releases). The binaries are automatically compiled through GitHub Actions and are available for the following platforms: Windows (32-bit and 64-bit) and Linux (64-bit only).
+
+**Note:** To run the application, you must first install the system prerequisites listed in the [Build](#build) section.
 
 ---
 
