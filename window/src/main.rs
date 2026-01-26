@@ -5,9 +5,10 @@
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 use tao::{
+    dpi::LogicalSize,
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    window::{Icon, WindowBuilder},
 };
 use wry::{http, WebViewBuilder};
 
@@ -16,39 +17,70 @@ use wry::{http, WebViewBuilder};
 #[folder = "dist/"]
 struct Assets;
 
+/// Load the embedded window icon from the assets directory.
+fn load_window_icon() -> Option<Icon> {
+    // Load raw icon bytes at compile time
+    let bytes: &'static [u8] = include_bytes!("../assets/icon.ico");
+
+    // Decode image data into an RGBA image
+    match image::load_from_memory(bytes) {
+        Ok(img) => {
+            let rgba = img.into_rgba8();
+            let (w, h) = rgba.dimensions();
+            // Convert RGBA data into a window icon
+            match Icon::from_rgba(rgba.into_raw(), w, h) {
+                Ok(icon) => Some(icon),
+                Err(e) => {
+                    // Log conversion error
+                    eprintln!("Error converting icon to tao::window::Icon: {}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            // Log decoding error
+            eprintln!("Failed to decode assets/icon.ico: {}", e);
+            None
+        }
+    }
+}
+
 fn main() -> wry::Result<()> {
-    // Entry point: creates window, sets up custom protocol, runs event loop
+    // Initialize the event loop
     let event_loop = EventLoop::new();
 
-    // Build application window with title and size
+    // Retrieve optional window icon
+    let icon = load_window_icon();
+
+    // Construct the application window with title, size, and icon
     let window = WindowBuilder::new()
         .with_title("Simulador de Memoria")
-        .with_inner_size(tao::dpi::LogicalSize::new(800.0, 600.0))
+        .with_inner_size(LogicalSize::new(800.0, 600.0))
+        .with_window_icon(icon)
         .build(&event_loop)
-        .unwrap();
+        .expect("failed to build window");
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    // Create WebView builder for supported platforms
+    // Create a WebView bound to the window
     let builder = WebViewBuilder::new(&window);
 
-    // Register custom protocol to serve embedded assets
+    // Define custom protocol handler to serve embedded assets
     let _webview = builder
         .with_custom_protocol("mi-app".into(), move |request| {
             let path = request.uri().path();
 
-            // Resolve request path to asset, defaulting to index.html for root
+            // Determine requested asset path
             let asset_path = if path == "/" {
                 "index.html"
             } else {
                 path.trim_start_matches('/')
             };
 
-            // Retrieve requested asset from embedded resources
+            // Serve the asset if found, otherwise return 404
             match Assets::get(asset_path) {
                 Some(content_file) => {
-                    // Determine MIME type based on file extension
                     let mime = mime_guess::from_path(asset_path).first_or_octet_stream();
 
+                    // Build HTTP response with appropriate MIME type
                     http::Response::builder()
                         .status(200)
                         .header("Content-Type", mime.as_ref())
@@ -56,30 +88,25 @@ fn main() -> wry::Result<()> {
                         .body(content_file.data)
                         .unwrap()
                 }
-                None => {
-                    // Return 404 response when asset not found
-                    http::Response::builder()
-                        .status(404)
-                        .header("Content-Type", "text/plain")
-                        .body(Cow::from("Archivo no encontrado".as_bytes()))
-                        .unwrap()
-                }
+                None => http::Response::builder()
+                    .status(404)
+                    .header("Content-Type", "text/plain")
+                    .body(Cow::from("Archivo no encontrado".as_bytes()))
+                    .unwrap(),
             }
         })
-        // Set initial URL using custom protocol
         .with_url("mi-app://localhost/")
-        // Enable developer tools
         .with_devtools(true)
         .build()?;
 
-    // Run event loop handling window events
+    // Run the event loop handling window events
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
-            // Log when application starts
-            Event::NewEvents(StartCause::Init) => println!("Aplicación iniciada"),
-            // Exit application on window close request
+            Event::NewEvents(StartCause::Init) => {
+                println!("Aplicación iniciada");
+            }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
