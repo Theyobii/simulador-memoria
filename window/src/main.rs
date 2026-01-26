@@ -4,6 +4,7 @@
 
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
+use std::env;
 use tao::{
     dpi::LogicalSize,
     event::{Event, StartCause, WindowEvent},
@@ -46,6 +47,13 @@ fn load_window_icon() -> Option<Icon> {
 }
 
 fn main() -> wry::Result<()> {
+    // On Linux, force the Wayland backend if desired.
+    // WINIT_UNIX_BACKEND can be "wayland" or "x11". If not set, winit will try Wayland and fall back to X11.
+    // This must be set before creating the EventLoop (i.e. before winit/wry initializes the display backend).
+    if cfg!(target_os = "linux") {
+        env::set_var("WINIT_UNIX_BACKEND", "wayland");
+    }
+
     // Initialize the event loop
     let event_loop = EventLoop::new();
 
@@ -60,12 +68,12 @@ fn main() -> wry::Result<()> {
         .build(&event_loop)
         .expect("failed to build window");
 
-    // Create a WebView bound to the window
-    let builder = WebViewBuilder::new(&window);
+    // Create a WebView bound to the window (API actual: new() sin argumentos)
+    let builder = WebViewBuilder::new();
 
     // Define custom protocol handler to serve embedded assets
     let _webview = builder
-        .with_custom_protocol("mi-app".into(), move |request| {
+        .with_custom_protocol("mi-app".into(), move |_, request| {
             let path = request.uri().path();
 
             // Determine requested asset path
@@ -91,13 +99,13 @@ fn main() -> wry::Result<()> {
                 None => http::Response::builder()
                     .status(404)
                     .header("Content-Type", "text/plain")
-                    .body(Cow::from("Archivo no encontrado".as_bytes()))
+                    .body(Cow::from("Archivo no encontrado".as_bytes().to_vec()))
                     .unwrap(),
             }
         })
         .with_url("mi-app://localhost/")
         .with_devtools(true)
-        .build()?;
+        .build(&window)?;
 
     // Run the event loop handling window events
     event_loop.run(move |event, _, control_flow| {

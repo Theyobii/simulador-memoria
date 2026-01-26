@@ -10,14 +10,14 @@ panic = "abort"
 strip = "symbols"
 
 [dependencies]
-wry = "0.40"
-tao = "0.28"
-rust-embed = "8.4"
-mime_guess = "2.0"
-image = "0.24"
+image = "0.25.9"
+mime_guess = "2.0.5"
+rust-embed = "8.11.0"
+tao = "0.34.5"
+wry = { version = "0.54.1", features = ["protocol"] }
 
 [build-dependencies]
-embed-resource = "2.4"
+embed-resource = "3.0.6"
 
 [target.'cfg(windows)'.build-dependencies]
-winres = "0.1"
+winres = "0.1.12"
