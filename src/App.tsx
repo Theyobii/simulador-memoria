@@ -58,7 +58,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 font-sans text-gray-900 md:p-10">
+    <div className="h-full bg-gray-50 p-4 font-sans text-gray-900 md:p-10">
       <div className="mx-auto max-w-7xl">
         <h1 className="mb-8 text-3xl font-extrabold text-indigo-700">
           Traductor de Direcciones: Paginación
