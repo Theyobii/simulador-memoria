@@ -67,9 +67,10 @@ This project uses various technologies from the Rust and NodeJS ecosystem, but i
    cd simulador-memoria
    ```
 
-2. **Compile the binary:**
+2. **Install the dependencies and compile the binary:**
 
    ```bash
+   pnpm install
    pnpm package:release
    ```
 
